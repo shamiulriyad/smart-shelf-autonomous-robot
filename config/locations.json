@@ -1,0 +1,44 @@
+{
+  "marker_types": {
+    "product": {"dictionary": "ARUCO_ORIGINAL", "id_range": [100, 199], "marker_size_cm": 5.0},
+    "shelf":   {"dictionary": "ARUCO_ORIGINAL", "id_range": [200, 299], "marker_size_cm": 18.7}
+  },
+
+  "products": {
+    "101": {"name": "Product A", "shelf": "A"},
+    "102": {"name": "Product B", "shelf": "C"},
+    "103": {"name": "Product C", "shelf": "B"},
+    "104": {"name": "Product D", "shelf": "D"},
+    "105": {"name": "Product E", "shelf": "E"},
+    "106": {"name": "Product F", "shelf": "F"},
+    "107": {"name": "Product G", "shelf": "A"},
+    "108": {"name": "Product H", "shelf": "B"},
+    "109": {"name": "Product I", "shelf": "C"},
+    "110": {"name": "Product J", "shelf": "D"},
+    "111": {"name": "Product K", "shelf": "E"},
+    "112": {"name": "Product L", "shelf": "F"}
+  },
+
+  "shelves": {
+    "A": {"marker_id": 201, "x": 2.0, "y": 4.0, "approach": {"x": 2.0, "y": 3.0}},
+    "B": {"marker_id": 202, "x": 5.0, "y": 4.0, "approach": {"x": 5.0, "y": 3.0}},
+    "C": {"marker_id": 203, "x": 8.0, "y": 4.0, "approach": {"x": 8.0, "y": 3.0}},
+    "D": {"marker_id": 204, "x": 3.5, "y": 4.0, "approach": {"x": 3.5, "y": 3.0}},
+    "E": {"marker_id": 205, "x": 6.5, "y": 4.0, "approach": {"x": 6.5, "y": 3.0}},
+    "F": {"marker_id": 206, "x": 9.4, "y": 4.0, "approach": {"x": 9.4, "y": 3.0}}
+  },
+
+  "map": {
+    "width_m": 10.0,
+    "height_m": 6.0,
+    "cell_size_m": 0.25,
+    "robot_radius_m": 0.2,
+    "robot_start": {"x": 5.0, "y": 0.5},
+    "shelf_footprint_m": {"width": 1.2, "depth": 0.5},
+    "obstacles": [
+      {"x_min": 4.0, "y_min": 2.0, "x_max": 6.0, "y_max": 2.75}
+    ]
+  },
+
+  "alignment": {"standoff_cm": 30.0, "approach_tolerance_cm": 10.0}
+}

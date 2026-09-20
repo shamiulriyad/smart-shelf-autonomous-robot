@@ -3,26 +3,46 @@ from cv2 import aruco
 import numpy as np
 
 class MarkerDetectionSystem:
+    # Common ArUco dictionaries to check each frame against, in addition to
+    # the project's original DICT_ARUCO_ORIGINAL. Add/remove entries here to
+    # change which marker types are recognized.
+    SUPPORTED_DICTIONARIES = {
+        'ARUCO_ORIGINAL': aruco.DICT_ARUCO_ORIGINAL,
+        'DICT_4X4_50': aruco.DICT_4X4_50,
+        'DICT_5X5_100': aruco.DICT_5X5_100,
+        'DICT_6X6_250': aruco.DICT_6X6_250,
+    }
+
     def __init__(self, marker_size_cm=18.7):
         self.marker_size_cm = marker_size_cm
-        self.dictionary = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
+        self.detectors = {
+            name: aruco.ArucoDetector(aruco.getPredefinedDictionary(dict_id), aruco.DetectorParameters())
+            for name, dict_id in self.SUPPORTED_DICTIONARIES.items()
+        }
         self.detected_markers = {}
 
     def detect_markers(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, self.dictionary)
-        if ids is not None:
+        self.detected_markers = {}
+        for dict_name, detector in self.detectors.items():
+            corners, ids, _ = detector.detectMarkers(gray)
+            if ids is None:
+                continue
             for i in range(len(ids)):
                 M = cv2.moments(corners[i][0])
                 if M["m00"] != 0:
                     cX = int(M["m10"] / M["m00"])
                     cY = int(M["m01"] / M["m00"])
+                    marker_id = int(np.ravel(ids[i])[0])
                     marker_info = {
-                        'ID': ids[i],
+                        'ID': marker_id,
+                        'Dictionary': dict_name,
                         'Centroid': (cX, cY),
                         'Corners': corners[i][0]
                     }
-                    self.detected_markers[ids[i][0]] = marker_info
+                    # Keyed by (dictionary, id) so the same numeric ID from
+                    # two different dictionaries doesn't overwrite each other.
+                    self.detected_markers[(dict_name, marker_id)] = marker_info
         return self.detected_markers
 
     def calculate_distance(self, marker_size_pixels, cap_width):
@@ -30,12 +50,13 @@ class MarkerDetectionSystem:
 
     def draw_markers(self, frame):
         if self.detected_markers:
-            for marker_id, marker_info in self.detected_markers.items():
+            for (dict_name, marker_id), marker_info in self.detected_markers.items():
                 cX, cY = marker_info['Centroid']
                 cv2.circle(frame, (cX, cY), 5, (255, 0, 255), -1)
                 marker_size_pixels = np.mean([np.linalg.norm(marker_info['Corners'][j] - marker_info['Corners'][(j + 1) % 4]) for j in range(4)])
                 distance_to_marker_cm = self.calculate_distance(marker_size_pixels, frame.shape[1])
-                cv2.putText(frame, "Dist. to Marker {}: {:.2f} cm".format(marker_id, distance_to_marker_cm), (cX - 120, cY + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 1)
+                label = "ID {} [{}]: {:.2f} cm".format(marker_id, dict_name, distance_to_marker_cm)
+                cv2.putText(frame, label, (cX - 120, cY + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 1)
 
     def draw_connections(self, frame):
         marker_ids = list(self.detected_markers.keys())
@@ -45,7 +66,9 @@ class MarkerDetectionSystem:
                     id1 = marker_ids[i]
                     id2 = marker_ids[j]
                     dist = np.linalg.norm(np.array(self.detected_markers[id1]['Centroid']) - np.array(self.detected_markers[id2]['Centroid']))
-                    cv2.putText(frame, "Dist. between {} and {}: {:.2f} cm".format(id1, id2, dist), (20, 40 + 20 * (len(self.detected_markers) + j + 1)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 1)
+                    label1 = "{}[{}]".format(id1[1], id1[0])
+                    label2 = "{}[{}]".format(id2[1], id2[0])
+                    cv2.putText(frame, "Dist. between {} and {}: {:.2f} cm".format(label1, label2, dist), (20, 40 + 20 * (len(self.detected_markers) + j + 1)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 1)
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -53,6 +76,9 @@ def main():
 
     while True:
         ret, frame = cap.read()
+        if not ret:
+            print("Failed to read from camera.")
+            break
 
         detected_markers = mds.detect_markers(frame)
         mds.draw_markers(frame)

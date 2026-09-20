@@ -1,0 +1,4 @@
+opencv-python>=4.7
+numpy
+reportlab>=4.0      # writes the printable marker PDFs (tools/generate_marker_pdf.py)
+pymupdf>=1.24       # renders those PDFs back so the markers can be detected before they are accepted

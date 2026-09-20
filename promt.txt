@@ -1,0 +1,236 @@
+The problem is STILL NOT SOLVED.
+
+Important observation:
+
+When I run:
+
+.venv\Scripts\python.exe main.py --pick 102 --synthetic
+
+the system can still place Product 102 as soon as marker 203 is detected.
+
+I do NOT want a superficial state-order/output fix.
+
+I need you to trace the actual execution path and find the exact code path that allows `place_product()` to happen after detecting marker 203.
+
+The required physical logic is:
+
+Product 102
+→ pick
+→ carry 102
+→ navigate toward Shelf C
+→ reach Shelf C area
+→ detect Shelf C marker 203
+→ verify that 203 is the EXPECTED target shelf
+→ determine relative shelf position
+→ align
+→ move to final placement position
+→ ONLY THEN place 102
+
+CRITICAL RULE:
+
+`detect marker 203` MUST NEVER be sufficient to place the product.
+
+There must be explicit conditions before `place_product()`.
+
+Before PLACE_PRODUCT, ALL of these must be true:
+
+1. `carried_product == 102`
+2. `target_shelf == "C"`
+3. detected shelf marker == target shelf marker 203
+4. robot has reached the shelf approach area
+5. shelf detection succeeded
+6. alignment succeeded
+7. robot reached the final placement position
+8. final approach movement completed
+
+If ANY condition is false:
+DO NOT PLACE.
+
+---
+
+## VERY IMPORTANT: TRACE THE ACTUAL CODE
+
+Search the entire repository for:
+
+* `place_product(`
+* `PLACE_PRODUCT`
+* `DETECT_SHELF`
+* marker ID `203`
+* `target_shelf`
+* `placement_position`
+* `carried_product`
+* synthetic camera implementation
+* `SyntheticCameraSource`
+
+Show me the exact call chain:
+
+main.py
+→ state machine
+→ DETECT_SHELF
+→ ALIGN_WITH_SHELF
+→ MOVE_TO_PLACEMENT_POSITION
+→ PLACE_PRODUCT
+
+Find exactly where `place_product()` is triggered.
+
+Do NOT assume the current implementation is correct just because the enum/state order looks correct.
+
+---
+
+## SYNTHETIC CAMERA IS CRITICAL
+
+Inspect `SyntheticCameraSource`.
+
+I suspect the synthetic camera may be returning marker 203 based only on frame count/state rather than the robot's actual simulated position.
+
+If so, FIX IT.
+
+The synthetic camera must be position-aware.
+
+For example:
+
+Robot:
+(5.0, 0.5)
+
+Shelf C:
+(8.0, 4.0)
+
+At this position:
+
+(5.0, 0.5)
+
+the synthetic camera MUST NOT report:
+
+marker 203 detected
+
+unless the simulated camera's field of view and distance actually allow Shelf C marker 203 to be visible.
+
+When the robot moves close enough to Shelf C, then marker 203 may become visible.
+
+The synthetic camera should use:
+
+* robot position
+* robot heading
+* shelf position
+* detection range
+* field of view
+* marker orientation if available
+
+to decide whether marker 203 is visible.
+
+Do NOT simply return marker 203 after N frames.
+
+---
+
+## SIMULATION RULE
+
+The simulation should represent the real-world relationship:
+
+Map navigation gets the robot close to the shelf.
+
+Then the camera detects the shelf marker.
+
+Then ArUco pose/relative position is used for final alignment.
+
+Then the robot moves to placement position.
+
+Then product is placed.
+
+---
+
+## ADD DEBUG ASSERTIONS
+
+Before `place_product()` add explicit validation.
+
+Something conceptually like:
+
+assert carried_product is not None
+assert carried_product == requested_product
+assert target_shelf == expected_shelf
+assert detected_shelf_marker == expected_shelf_marker
+assert shelf_detected
+assert alignment_complete
+assert at_final_placement_position
+
+If any condition fails, raise a clear error and DO NOT place.
+
+Do not hide these checks.
+
+---
+
+## TEST THE BUG DIRECTLY
+
+Add a test where:
+
+Robot is FAR from Shelf C.
+
+Example:
+
+robot position = (5.0, 0.5)
+Shelf C = (8.0, 4.0)
+
+Force/inject detection of marker 203.
+
+Expected result:
+
+DETECT_SHELF may recognize marker 203,
+BUT PLACE_PRODUCT MUST NOT execute.
+
+The robot must still go through:
+
+ALIGN_WITH_SHELF
+→ MOVE_TO_PLACEMENT_POSITION
+→ PLACE_PRODUCT
+
+and final placement must happen only after the robot reaches the placement position.
+
+Add another test:
+
+Robot is far from Shelf C and synthetic camera tries to return 203.
+
+Expected:
+
+203 is NOT visible because the synthetic camera is position-aware.
+
+---
+
+## MOST IMPORTANT TEST
+
+Run:
+
+.venv\Scripts\python.exe -m pytest -q
+
+Then:
+
+.venv\Scripts\python.exe main.py --pick 102 --synthetic
+
+The final output must prove:
+
+1. Product 102 picked.
+2. Product 102 remains carried.
+3. Robot position changes.
+4. Robot reaches Shelf C approach area.
+5. Only then does marker 203 become visible.
+6. 203 is verified as the target shelf.
+7. ALIGN_WITH_SHELF runs.
+8. MOVE_TO_PLACEMENT_POSITION runs.
+9. Robot reaches final placement position.
+10. Only then PLACE_PRODUCT runs.
+11. Product 102 is released.
+12. VERIFY_PLACEMENT succeeds.
+13. DONE.
+
+DO NOT just modify console messages.
+
+DO NOT just reorder states.
+
+Find the actual reason why marker 203 can currently cause placement and fix the underlying logic.
+
+After making changes, report:
+
+* exact root cause
+* exact files changed
+* exact functions changed
+* why the previous fix did not solve it
+* test results
+* final state sequence

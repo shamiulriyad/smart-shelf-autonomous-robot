@@ -1,0 +1,94 @@
+ARUCO WAREHOUSE PICK-AND-PLACE - COMMANDS
+Run everything from:  E:\Micro\ArUcoMarkerDetector   (PowerShell)
+Python is the project venv, so no activation is needed: .venv\Scripts\python.exe
+
+
+0) ONE-TIME SETUP
+-----------------
+cd E:\Micro\ArUcoMarkerDetector
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+
+1) RUN THE ROBOT DEMO
+---------------------
+# Simulated camera (rendered markers, no webcam, no preview window)
+.venv\Scripts\python.exe main.py --pick 102 --synthetic
+
+# Same, choose the product by name
+.venv\Scripts\python.exe main.py --pick "Product B" --synthetic
+
+# Real webcam (show marker 102, then shelf marker 203 to the camera)
+.venv\Scripts\python.exe main.py --pick 102
+
+# Real webcam, other camera index / resolution (must match calibration size)
+.venv\Scripts\python.exe main.py --pick 102 --camera 1
+.venv\Scripts\python.exe main.py --pick 102 --width 1280 --height 720
+
+# Webcam without the preview window
+.venv\Scripts\python.exe main.py --pick 102 --no-display
+
+# Interactive: asks which product to pick (type ID or name, q to quit)
+.venv\Scripts\python.exe main.py
+.venv\Scripts\python.exe main.py --synthetic
+
+# Other products (product -> shelf marker)
+#   101 -> A (201)   102 -> C (203)   103 -> B (202)
+#   104 -> D (204)   105 -> E (205)   106 -> F (206)
+.venv\Scripts\python.exe main.py --pick 101 --synthetic
+.venv\Scripts\python.exe main.py --pick 104 --synthetic
+
+# Use another config file
+.venv\Scripts\python.exe main.py --pick 102 --synthetic --config config\locations.json
+
+
+2) SHOW THE MAP AND PLANNED PATHS
+---------------------------------
+.venv\Scripts\python.exe main.py --show-map
+
+
+3) CAMERA CALIBRATION (needed for real distances/angles)
+--------------------------------------------------------
+# Print a 7x6 inner-corner chessboard, measure ONE square with a ruler (cm), then:
+.venv\Scripts\python.exe main.py --calibrate --square-cm 2.5
+
+# Different board size
+.venv\Scripts\python.exe main.py --calibrate --square-cm 2.5 --board 9x6
+
+# Saved to config\camera_calibration.json (override with --calibration-file)
+
+
+4) MARKERS (generate + verify)
+------------------------------
+# PNG for every product/shelf in config\locations.json -> .\markers
+# (generate_markers.py has NO --help; any argument is treated as the output folder)
+.venv\Scripts\python.exe tools\generate_markers.py
+
+# Printable A4 PDFs -> markers\pdf
+.venv\Scripts\python.exe tools\generate_marker_pdf.py --all
+.venv\Scripts\python.exe tools\generate_marker_pdf.py --products
+.venv\Scripts\python.exe tools\generate_marker_pdf.py --shelves
+.venv\Scripts\python.exe tools\generate_marker_pdf.py --product-ids 101 102 --shelf-ids 203
+
+# Check the generated markers are detected correctly
+.venv\Scripts\python.exe tools\verify_markers.py
+.venv\Scripts\python.exe tools\verify_markers.py --pdf markers\pdf\all_markers.pdf
+
+
+5) TESTS
+--------
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m pytest -q tests\test_state_machine.py
+
+
+EXPECTED STATE ORDER (success)
+------------------------------
+SEARCH_PRODUCT -> DETECT_PRODUCT -> VERIFY_PRODUCT -> PICK_PRODUCT -> GET_TARGET_SHELF
+-> NAVIGATE_TO_SHELF -> DETECT_SHELF -> ALIGN_WITH_SHELF -> APPROACH_SHELF
+-> MOVE_TO_PLACEMENT_POSITION -> PLACE_PRODUCT -> VERIFY_PLACEMENT -> DONE
+
+APPROACH_SHELF measures the camera-to-shelf-marker distance every frame and will not finish
+until it reads <= standoff_cm + approach_tolerance_cm (40 cm by default). On a live webcam YOU
+close that gap by walking the camera in; it prints "move NN cm CLOSER" while it waits.
+
+Webcam window: press q or Esc in the preview window to abort (exit code 130).
+Exit codes: 0 success, 1 run failed, 2 bad input/config, 3 camera error.

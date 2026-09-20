@@ -1,0 +1,400 @@
+The current workflow is STILL WRONG.
+
+I am testing this project using my LAPTOP WEBCAM.
+
+My physical test setup is:
+
+* Product marker 102 is in front of the laptop camera.
+* Shelf marker 203 is physically placed on my wall, at a different location.
+* I first show Product marker 102 to the camera.
+* The system must identify Product 102 and simulate picking it.
+* THEN I physically move the laptop/camera toward the wall.
+* ONLY when the camera sees Shelf marker 203 should the system identify Shelf C.
+* ONLY after reaching/aligning with Shelf C should the system place Product 102.
+
+CURRENT BUG:
+
+The system is placing the product too early when it detects the product marker / when markers are detected.
+
+I need you to FIX THE ACTUAL WORKFLOW, not just change console output or reorder state names.
+
+---
+
+## REQUIRED REAL WEBCAM WORKFLOW
+
+The real webcam workflow MUST be:
+
+START
+↓
+SEARCH_PRODUCT
+↓
+DETECT_PRODUCT
+↓
+VERIFY_PRODUCT
+↓
+PICK_PRODUCT
+↓
+NAVIGATE_TO_SHELF
+↓
+DETECT_SHELF
+↓
+ALIGN_WITH_SHELF
+↓
+MOVE_TO_PLACEMENT_POSITION
+↓
+PLACE_PRODUCT
+↓
+VERIFY_PLACEMENT
+↓
+DONE
+
+For Product 102:
+
+102 = Product B
+203 = Shelf C
+
+The workflow MUST behave like this:
+
+PHASE 1 — PRODUCT
+
+Camera sees:
+
+102
+
+System:
+
+PRODUCT 102 DETECTED
+Product B
+Target Shelf C
+PICK PRODUCT 102
+
+At this point:
+
+carried_product = 102
+
+IMPORTANT:
+
+After Product 102 is picked, DO NOT PLACE anything.
+
+The system must enter:
+
+NAVIGATE_TO_SHELF
+
+---
+
+## PHASE 2 — NAVIGATION
+
+The laptop webcam is now acting as the robot's camera.
+
+The user will physically move/rotate the laptop toward the shelf.
+
+While in NAVIGATE_TO_SHELF:
+
+DO NOT call:
+
+place_product()
+
+DO NOT transition to:
+
+PLACE_PRODUCT
+
+DO NOT consider the task complete.
+
+The robot is carrying Product 102.
+
+The system should display:
+
+Carrying Product B (102)
+Target Shelf: C
+Target Shelf Marker: 203
+
+Then it should search for the target shelf marker.
+
+---
+
+## PHASE 3 — SHELF DETECTION
+
+ONLY when the webcam actually sees marker 203:
+
+SHELF MARKER 203 DETECTED
+
+Then verify:
+
+detected_marker_id == target_shelf_marker_id
+
+For Product 102:
+
+target_shelf == "C"
+target_marker == 203
+
+If the camera sees any other marker:
+
+DO NOT place.
+
+For example:
+
+camera sees 204
+
+→ ignore it
+→ continue searching for 203
+
+If camera sees 102 again:
+
+→ this is the product marker
+→ DO NOT place
+→ continue searching for 203
+
+If camera sees 203:
+
+→ target shelf found
+→ continue to ALIGN_WITH_SHELF
+
+---
+
+## CRITICAL RULE
+
+DETECTING 102 MUST NEVER TRIGGER PLACEMENT.
+
+DETECTING 203 MUST NOT DIRECTLY TRIGGER PLACEMENT EITHER.
+
+203 only means:
+
+"TARGET SHELF FOUND"
+
+The only state allowed to call:
+
+robot.place_product()
+
+is:
+
+PLACE_PRODUCT
+
+And PLACE_PRODUCT can ONLY be entered after:
+
+1. Product 102 is currently being carried.
+2. Target shelf is C.
+3. Target shelf marker is 203.
+4. Webcam has actually detected marker 203.
+5. Shelf detection was successful.
+6. Alignment was successful.
+7. Final placement position was reached.
+
+---
+
+## VERY IMPORTANT: REAL WEBCAM MODE
+
+Inspect the actual code path used by:
+
+.venv\Scripts\python.exe main.py --pick 102
+
+Do NOT focus only on:
+
+--synthetic
+
+I am specifically testing the real laptop webcam.
+
+Trace:
+
+main.py
+→ CameraSource/WebcamSource
+→ perception
+→ state_machine
+→ DETECT_PRODUCT
+→ PICK_PRODUCT
+→ NAVIGATE_TO_SHELF
+→ DETECT_SHELF
+→ ALIGN_WITH_SHELF
+→ MOVE_TO_PLACEMENT_POSITION
+→ PLACE_PRODUCT
+
+Find the exact reason why the current real webcam workflow reaches placement too early.
+
+Search the entire repository for:
+
+place_product(
+PLACE_PRODUCT
+PICK_PRODUCT
+DETECT_PRODUCT
+DETECT_SHELF
+102
+203
+carried_product
+target_shelf
+WebcamSource
+
+---
+
+## NO FAKE SHELF DETECTION
+
+In REAL WEBCAM MODE:
+
+Do NOT automatically create/assume Shelf 203 detection.
+
+Do NOT use:
+
+frame count
+timer
+number of frames
+previous detection
+synthetic detection
+hardcoded marker 203
+
+to declare that Shelf 203 has been detected.
+
+Shelf 203 must come from the actual camera frame.
+
+The perception layer must return marker 203 ONLY if OpenCV actually detects marker 203 in the webcam image.
+
+---
+
+## IMPORTANT CAMERA TEST
+
+I want to perform this exact manual test:
+
+1. Start:
+
+.venv\Scripts\python.exe main.py --pick 102
+
+2. Show Product marker 102 to the webcam.
+
+Expected:
+
+PRODUCT 102 DETECTED
+Product B
+PICK_PRODUCT
+Carrying Product B (102)
+
+3. Remove Product 102 from the webcam view.
+
+IMPORTANT:
+
+The system MUST NOT place the product.
+
+It should say something like:
+
+NAVIGATING TO SHELF C
+Searching for Shelf marker 203...
+
+4. Move the laptop/webcam physically toward the wall where marker 203 is located.
+
+5. When marker 203 enters the webcam:
+
+SHELF MARKER 203 DETECTED
+Target Shelf C confirmed
+
+6. Then:
+
+ALIGN_WITH_SHELF
+
+7. Then:
+
+MOVE_TO_PLACEMENT_POSITION
+
+8. Then:
+
+PLACE_PRODUCT
+
+9. Then:
+
+VERIFY_PLACEMENT
+
+10. DONE
+
+---
+
+## ADD A HARD SAFETY GUARD
+
+Add a final guard inside the actual `place_product()` path.
+
+Placement must fail if any required condition is false.
+
+Conceptually:
+
+if carried_product is None:
+reject placement
+
+if target_shelf is None:
+reject placement
+
+if detected_shelf_marker != expected_shelf_marker:
+reject placement
+
+if not shelf_detected:
+reject placement
+
+if not alignment_complete:
+reject placement
+
+if not placement_position_reached:
+reject placement
+
+ONLY if all conditions pass:
+
+place_product()
+
+This guard must be inside the real execution path, not only in tests.
+
+---
+
+## TESTS
+
+Add tests for these exact failure cases:
+
+TEST 1:
+Product 102 detected.
+No shelf marker detected.
+Expected:
+NO placement.
+
+TEST 2:
+Product 102 detected.
+Wrong shelf marker 204 detected.
+Expected:
+NO placement.
+
+TEST 3:
+Product 102 detected.
+Target shelf 203 detected.
+But alignment not complete.
+Expected:
+NO placement.
+
+TEST 4:
+Product 102 detected.
+Target shelf 203 detected.
+Alignment complete.
+But final placement position not reached.
+Expected:
+NO placement.
+
+TEST 5:
+Product 102 detected.
+Target shelf 203 detected.
+Alignment complete.
+Final placement position reached.
+Expected:
+Placement succeeds.
+
+TEST 6 — REAL WEBCAM LOGIC:
+After picking 102, if the webcam no longer sees 102 and has not yet seen 203:
+Expected:
+The system remains in navigation/shelf-search mode.
+It MUST NOT place.
+
+Run:
+
+.venv\Scripts\python.exe -m pytest -q
+
+Then run:
+
+.venv\Scripts\python.exe main.py --pick 102
+
+Do not tell me the problem is fixed only because tests pass.
+
+Show me the actual execution path and explain:
+
+* Why it was placing early.
+* Which function caused it.
+* What exact condition was missing.
+* What files/functions you changed.
+* Why the real webcam test will now wait for actual marker 203.
